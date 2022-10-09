@@ -254,13 +254,11 @@ float rad_to_wheel_dst(float rad){
 /// @param tolerance tolerance to hold the turn to
 /// @param reset resets internal counter variables. use between movements
 /// @return if the movement is completed
-bool turn_rad_nb(int base_effort, float p, float angle_rad, float tolerance, bool reset){
-  static float radians_turned = 0;
+bool turn_rad_nb(int base_effort, float p, float angle_rad, float tolerance, bool reset){  // TODO: fix logic
   static float l_enc_zero = chassis.getLeftEncoderCount();
   static float r_enc_zero = chassis.getRightEncoderCount();
-  
+
   if (reset) {
-    radians_turned = 0;
     l_enc_zero = chassis.getLeftEncoderCount();
     r_enc_zero = chassis.getRightEncoderCount();
   }
@@ -289,6 +287,45 @@ bool turn_rad_nb(int base_effort, float p, float angle_rad, float tolerance, boo
 }
 
 
+/// @brief savely moves the servo to a position
+/// @param pos servo position to go to
+/// @param reset resets internal counter variables. use between movements
+/// @return grabber_move_state
+Servo32U4Base::grabber_move_state servo_goto_nb(int pos, bool reset){
+  int curr_pos = analogRead(servo.Servo_sense);
+  int tar_pos = servo.microsec_to_pos(pos);  //converts position in microseconds to resistor value
+  static int prev_pos = curr_pos;    //sets prev position a little different to avoid exiting while loop
+  static int stall_counter = 0;
+  if (reset) {
+    prev_pos = curr_pos;
+    stall_counter = 0;
+  }
+
+  Serial.print("curr_pos: ");
+  Serial.println(curr_pos);
+  Serial.print("tar_pos: ");
+  Serial.println(tar_pos);
+  Serial.print("prev_pos: ");
+  Serial.println(prev_pos);
+
+  servo.writeMicroseconds(pos);
+  if(abs(curr_pos - prev_pos)>5 && abs(curr_pos - tar_pos)>10){  // servo still moving
+    prev_pos = curr_pos;
+    return (Servo32U4Base::grabber_move_state::in_progress);
+  } else if (abs(curr_pos - prev_pos)<5){  // failure, servo not moving
+    if (stall_counter++ > 10) {
+      return (Servo32U4Base::grabber_move_state::failure);
+    } else {
+      return (Servo32U4Base::grabber_move_state::in_progress);
+    }
+  }else { //if (abs(curr_pos - tar_pos)<10) move done
+    prev_pos = curr_pos;
+    return (Servo32U4Base::grabber_move_state::success);
+  }
+  // delay(20);
+}
+
+
 enum states {
   initilize,
   estop,
@@ -314,32 +351,53 @@ struct packet {
   float data;
 };
 
-void debug_printer(packet instruction, String fname, int counter){
-  Serial.print(fname);
+void debug_printer(packet instruction, int counter){
+  static const String decoder[] = {
+    "initilize",
+    "estop",
+    "next_state",
+    "turn_to_line",  // expects data for turn direction (0 left, 1 right)
+    "turn_rad",  // expects an angle to turn counterclockwise (deg 0-359)
+    "orient_to_intersection",  // turns and goes to intersection. 
+                            // expects data for direction to turn at intersection (0 left, 1 right)
+    "follow_line_to_distance_reading",  // expects data for distance reading (cm)
+    "follow_line_to_over_intersection",
+    "follow_line_distance",  // expects data for distance to move (cm)
+    "wait_for_confirmation",
+    "wait",  // expects data for time to wait, (~ms)
+    "grab",
+    "release",
+    "grab_pos",  // expects data for four bar position (deg)
+    "release_pos",  // expects data for four bar position (deg)
+    "pos_four_bar",  // expects data for four bar position (deg)
+  };
+  Serial.println();
+  Serial.print(decoder[instruction.state]);
   Serial.print(" ");
-  Serial.print(counter);
+  Serial.print(instruction.data);
   Serial.print(" ");
-  Serial.println(instruction.data);
+  Serial.println(counter);
 }
 
 void loop(){
-  // #define debug
+  #define debug
   StackArray<packet> instruction_stack;
-  instruction_stack.push((packet){initilize, -1});
+  // instruction_stack.push((packet){initilize, -1});
+  instruction_stack.push((packet){grab, -1});
   packet instruction = (packet){next_state, -1};
-  int counter;
+  int counter = 0;  // resets between states
 
   while (true){
+    #ifdef debug
+    debug_printer(instruction, counter);
+    #endif
+
     if(buttonB.isPressed()){
       instruction = (packet){estop, -1};
     }
 
     switch (instruction.state) {
       case initilize:
-        #ifdef debug
-        debug_printer(instruction, "initilize", counter);
-        #endif
-
         // this is a stack so instructions should be read bottom up
         instruction_stack.push((packet){release_pos, 25});  // replace plate for 25 pos
         instruction_stack.push((packet){orient_to_intersection, 0}); // orient for 25 pos
@@ -376,10 +434,6 @@ void loop(){
         break;
 
       case estop:  // TODO: Finish
-        #ifdef debug
-        debug_printer(instruction, "estop", counter);
-        #endif
-
         motor.setEffort(0);
         chassis.idle();
 
@@ -387,10 +441,6 @@ void loop(){
         break;
 
       case next_state:
-        #ifdef debug
-        debug_printer(instruction, "next_state", counter);
-        #endif
-
         counter = 0;  // reset the counter so the next state can use it
         if (!instruction_stack.isEmpty()) {
           instruction = instruction_stack.pop();
@@ -400,30 +450,17 @@ void loop(){
         break;
 
       case turn_to_line:  // TODO: Finish
-        #ifdef debug
-        debug_printer(instruction, "turn_to_line", counter);
-        #endif
-
+        break;
       case turn_rad:  // TODO: Finish
-        #ifdef debug
-        debug_printer(instruction, "turn_rad", counter);
-        #endif
+        break;
 
       case follow_line_to_distance_reading:
-        #ifdef debug
-        debug_printer(instruction, "follow_line_to_distance_reading", counter);
-        #endif
-        
         if (follow_line_to_distance_reading_nb(300, LF_P, DST_P, 120, 0.1)){
           instruction = (packet){next_state, -1};
         }
         break;
 
       case follow_line_to_over_intersection:
-        #ifdef debug
-        debug_printer(instruction, "follow_line_to_intersection", counter);
-        #endif
-        
         if (follow_line_to_intersection_nb(300, LF_P)){
           instruction_stack.push((packet){follow_line_distance, ROMI_RADIUS});
           instruction = (packet){next_state, -1};
@@ -431,9 +468,6 @@ void loop(){
         break;
 
       case follow_line_distance:
-        #ifdef debug
-        debug_printer(instruction, "follow_line_to_intersection", counter);
-        #endif
         if (counter++ == 0) {  // first nb call of this move
           if (follow_line_distance_nb(300, LF_P, instruction.data, true)){  // reset fn
             instruction = (packet){next_state, -1};
@@ -447,10 +481,6 @@ void loop(){
         break;
 
       case wait_for_confirmation:  // TODO: Finish
-        #ifdef debug
-        debug_printer(instruction, "wait_for_confirmation", counter);
-        #endif
-        
         break;
 
       /// @brief waits for 1ms at a time, basically non blocking
@@ -460,39 +490,53 @@ void loop(){
         } else {  // done waiting
           instruction = (packet){next_state, -1};
         }
+        break;
 
-      case grab:  // TODO: make NB
-        #ifdef debug
-        debug_printer(instruction, "grab", counter);
-        #endif
-        
-        if (servo.grabber_close()){
-          instruction = (packet){next_state, -1};
-        } else {
-          servo.grabber_open();
-        }
-        if (++counter >= 3) {
-            instruction = (packet){estop, -1};
+      case grab:  // this will just keep trying to grab on failure
+        {  // seperate scope so I don't have to deal with redefining vars
+          Servo32U4Base::grabber_move_state servo_state;
+
+          if (counter++ == 0) {  // first nb call of this move
+            servo_state = servo_goto_nb(Servo32U4Base::grabber_closed_pos, true);
+          } else {  // subsequent calls
+            servo_state = servo_goto_nb(Servo32U4Base::grabber_closed_pos, false);
+          }
+
+          if (servo_state == Servo32U4Base::grabber_move_state::success){
+            instruction = (packet){next_state, -1};
+            Serial.println("success");
+          } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // just try again
+            instruction_stack.push((packet){grab, -1});
+            instruction_stack.push((packet){release, -1});
+            instruction = (packet){next_state, -1};
+            Serial.println("failure");
+          } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
+            Serial.println("in_progress");
+          }
         }
         break;
 
-      case release:  // TODO: make NB
-        #ifdef debug
-        debug_printer(instruction, "release", counter);
-        #endif
+      case release:
+        {  // seperate scope so I don't have to deal with redefining vars
+          Servo32U4Base::grabber_move_state servo_state;
 
-        if (servo.grabber_open()){
-          instruction = (packet){next_state, -1};
-        } else if (++counter >= 3) {
+          if (counter++ == 0) {  // first nb call of this move
+            servo_state = servo_goto_nb(Servo32U4Base::grabber_open_pos, true);
+          } else {  // subsequent calls
+            servo_state = servo_goto_nb(Servo32U4Base::grabber_open_pos, false);
+          }
+
+          if (servo_state == Servo32U4Base::grabber_move_state::success){
+            instruction = (packet){next_state, -1};
+          } else if (servo_state == Servo32U4Base::grabber_move_state::failure){
             instruction = (packet){estop, -1};
+          } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
+            break;
+          }
         }
         break;
 
       case grab_pos:
-        #ifdef debug
-        debug_printer(instruction, "grab_pos", counter);
-        #endif
-
         {  // seperate scope so I don't have to deal with redefining vars
           float distance;
           float angle_enc_count;
@@ -526,13 +570,9 @@ void loop(){
         break;
 
       case release_pos:
-        #ifdef debug
-        debug_printer(instruction, "release_pos", counter);
-        #endif
-
         {  // seperate scope so I don't have to deal with redefining vars
           float distance;
-          int angle_enc_count;
+          float angle_enc_count;
           float safe_angle_enc_count;
           if (instruction.data == 0){
             distance = pos_0_distance;
@@ -563,10 +603,6 @@ void loop(){
         break;
 
       case pos_four_bar:
-        #ifdef debug
-        debug_printer(instruction, "pos_four_bar", counter);
-        #endif
-        
         if(motor.moveToNB(instruction.data)) {
           instruction = (packet){next_state, -1};
         }

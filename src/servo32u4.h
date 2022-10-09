@@ -44,7 +44,6 @@ protected:
 
     uint8_t feedbackPin = -1;
     bool isAttached = false;
-    int Servo_sense = A0;
 
 public:
     // Virtual functions defined for each specific class
@@ -55,6 +54,17 @@ public:
     bool grabber_close();
     bool grabber_goto(int pos);
     int microsec_to_pos(int pos);
+
+    int Servo_sense = A0;
+    static const int grabber_open_pos = 1900;
+    static const int grabber_closed_pos = 1035;
+    static const int grabber_pos_tolerance = 10;
+
+    enum grabber_move_state {
+        success,
+        failure,
+        in_progress
+    };
 
     uint16_t setMinMaxMicroseconds(uint16_t min, uint16_t max);
 };

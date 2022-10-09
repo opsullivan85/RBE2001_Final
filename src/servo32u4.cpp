@@ -198,10 +198,10 @@ bool Servo32U4Base::grabber_goto(int pos)
     this->writeMicroseconds(pos);
     while(true){
         curr_pos = analogRead(Servo_sense);
-        if(abs(curr_pos - prev_pos)<2 && abs(curr_pos - tar_pos)>10){  //if prev val and curr val are too close and not within a range of the tar val open gripper
+        if(abs(curr_pos - prev_pos)<2 && abs(curr_pos - tar_pos)>Servo32U4Base::grabber_pos_tolerance){  //if prev val and curr val are too close and not within a range of the tar val open gripper
             return false;
         }
-        else if(abs(curr_pos - tar_pos)<10) {   //if the grabber reaches a range of the tar val return true
+        else if(abs(curr_pos - tar_pos)<Servo32U4Base::grabber_pos_tolerance) {   //if the grabber reaches a range of the tar val return true
             return true;
         }
         prev_pos = curr_pos;
@@ -213,12 +213,12 @@ bool Servo32U4Base::grabber_goto(int pos)
 /// @return success status of move
 bool Servo32U4Base::grabber_open()  //method to open grabber
 {
-    return grabber_goto(1900);
+    return grabber_goto(Servo32U4Base::grabber_open_pos);
 }
 
 /// @brief Closes the grabber
 /// @return success status of move
 bool Servo32U4Base::grabber_close() //method to close grabber
 {
-    return grabber_goto(1035);
+    return grabber_goto(Servo32U4Base::grabber_closed_pos);
 }
