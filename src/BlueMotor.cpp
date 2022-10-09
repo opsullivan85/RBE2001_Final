@@ -109,14 +109,24 @@ void BlueMotor::moveTo(long target)  //Move to this encoder position within the 
 {                                    //tolerance in the header file using proportional control
                                      //then stop
 
-    long delta;
-    while (abs(delta) >= this->tolerance){
+    long delta = target - this->getPosition();
+    while (abs(delta) > this->tolerance){
         delta = target - this->getPosition();
         this->setEffort(delta * this->P);
-        Serial.println(delta * this->P);
     }
     
     this->setEffort(0);
+}
+
+bool BlueMotor::moveToNB(long target) {
+  long delta = target - this->getPosition();
+  if(abs(delta) > this->tolerance){
+    this->setEffort(delta * this->P);
+    return false;
+  } else {
+    this->setEffort(0);
+    return true;
+  }
 }
 
 float BlueMotor::get_rpm(int dt, long dp){

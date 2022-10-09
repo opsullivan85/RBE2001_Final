@@ -270,36 +270,45 @@ bool follow_line_to_distance_reading_nb(int base_effort, float lf_p, float dst_p
 /// @param base_effort speed to run the motors at
 /// @param p p factor
 /// @param distance distance to go (cm)
-// void follow_line_to_distance(int base_effort, float p, float distance){
-//   float correction;
-//   float traveled_distance = 0;
-//   int l_start_enc_cnt = chassis.getLeftEncoderCount();
-//   int r_start_enc_cnt = chassis.getLeftEncoderCount();
-//   int l_enc_delta;
-//   int r_enc_delta;
+/// @param reset resets internal counter variables. use between movements
+bool follow_line_distance_nb(int base_effort, float p, float distance, bool reset){
+  static float traveled_distance = 0;
+  if (reset) {traveled_distance = 0;}
+  float correction;
+  int l_start_enc_cnt = chassis.getLeftEncoderCount();
+  int r_start_enc_cnt = chassis.getLeftEncoderCount();
+  int l_enc_delta;
+  int r_enc_delta;
 
-//   while (traveled_distance <= distance){
-//     correction = get_line_following_steering_factor(p);
-//     chassis.setMotorEfforts(get_left_steering_effort(base_effort, correction),
-//       get_right_steering_effort(base_effort, correction));
+  if (traveled_distance <= distance){
+    correction = get_line_following_steering_factor(p);
+    chassis.setMotorEfforts(get_left_steering_effort(base_effort, correction),
+      get_right_steering_effort(base_effort, correction));
 
-//     l_enc_delta = chassis.getLeftEncoderCount() - l_start_enc_cnt;
-//     r_enc_delta = chassis.getLeftEncoderCount() - r_start_enc_cnt;
+    l_enc_delta = chassis.getLeftEncoderCount() - l_start_enc_cnt;
+    r_enc_delta = chassis.getLeftEncoderCount() - r_start_enc_cnt;
 
-//     traveled_distance = (l_enc_delta + r_enc_delta) / 2 * chassis.cmPerEncoderTick;
-//   }
-// }
+    traveled_distance = (l_enc_delta + r_enc_delta) / 2 * chassis.cmPerEncoderTick;
+    return false;
+  } else {
+    return true;
+  }
+}
 
 
 enum states {
   initilize,
   estop,
   next_state,
-  turn_left,
-  turn_right,
+  turn_to_line,  // expects data for turn direction (0 left, 1 right)
+  turn_deg,  // expects an angle to turn counterclockwise (deg 0-359)
+  orient_to_intersection,  // turns and goes to intersection. 
+                           // expects data for direction to turn at intersection (0 left, 1 right)
   follow_line_to_distance_reading,  // expects data for distance reading (cm)
-  follow_line_to_intersection,
+  follow_line_to_over_intersection,
+  follow_line_distance,  // expects data for distance to move (cm)
   wait_for_confirmation,
+  wait,  // expects data for time to wait, (~ms)
   grab,
   release,
   grab_pos,  // expects data for four bar position (deg)
@@ -329,7 +338,7 @@ void loop(){
 
   while (true){
     if(buttonB.isPressed()){
-      instruction.state = estop;
+      instruction = (packet){estop, -1};
     }
 
     switch (instruction.state) {
@@ -338,9 +347,38 @@ void loop(){
         debug_printer(instruction, "initilize", counter);
         #endif
 
-        instruction_stack.push((packet){release, -1});
-        instruction_stack.push((packet){grab, -1});
-        instruction_stack.push((packet){follow_line_to_intersection, -1});
+        // this is a stack so instructions should be read bottom up
+        instruction_stack.push((packet){release_pos, 25});  // replace plate for 25 pos
+        instruction_stack.push((packet){orient_to_intersection, 0}); // orient for 25 pos
+
+        instruction_stack.push((packet){grab_pos, 0});  // grab new plate from 0 deg pos
+        instruction_stack.push((packet){release_pos, 0});  // release old plate at 0 deg pos
+
+        instruction_stack.push((packet){orient_to_intersection, 0});  // orient for 0 pos
+        instruction_stack.push((packet){grab_pos, 25});  // grab from 45 deg pos
+        instruction_stack.push((packet){orient_to_intersection, 1});  // orient for 45 pos
+
+        instruction_stack.push((packet){follow_line_to_over_intersection, -1});  // cross field
+        instruction_stack.push((packet){turn_deg, 270});  // turn to face other side of field
+        instruction_stack.push((packet){follow_line_to_distance_reading, 10});  // go to position for crossing
+        instruction_stack.push((packet){orient_to_intersection, 1});  // orient for 0 pos
+
+        instruction_stack.push((packet){release_pos, 45});  // replace plate for 45 pos
+        instruction_stack.push((packet){orient_to_intersection, 0}); // orient for 45 pos
+
+        instruction_stack.push((packet){grab_pos, 0});  // grab new plate from 0 deg pos
+        instruction_stack.push((packet){release_pos, 0});  // release old plate at 0 deg pos
+
+        instruction_stack.push((packet){orient_to_intersection, 1});  // orient for 0 pos
+        instruction_stack.push((packet){grab_pos, 45});  // grab from 45 deg pos
+
+        instruction = (packet){next_state, -1};
+        break;
+
+      case orient_to_intersection:
+        instruction_stack.push((packet){turn_to_line, instruction.data});  // turn specified direction
+        instruction_stack.push((packet){follow_line_to_over_intersection, -1});  // go to intersection
+        instruction_stack.push((packet){turn_to_line, 1});  // full turn on single line
         instruction = (packet){next_state, -1};
         break;
 
@@ -368,19 +406,15 @@ void loop(){
         }
         break;
 
-      case turn_left:  // TODO: Finish
+      case turn_to_line:  // TODO: Finish
         #ifdef debug
-        debug_printer(instruction, "turn_left", counter);
+        debug_printer(instruction, "turn_to_line", counter);
         #endif
-        
-        break;
 
-      case turn_right:  // TODO: Finish
+      case turn_deg:  // TODO: Finish
         #ifdef debug
-        debug_printer(instruction, "turn_right", counter);
+        debug_printer(instruction, "turn_deg", counter);
         #endif
-        
-        break;
 
       case follow_line_to_distance_reading:
         #ifdef debug
@@ -392,14 +426,31 @@ void loop(){
         }
         break;
 
-      case follow_line_to_intersection:
+      case follow_line_to_over_intersection:
         #ifdef debug
         debug_printer(instruction, "follow_line_to_intersection", counter);
         #endif
         
         if (follow_line_to_intersection_nb(300, LF_P)){
+          instruction_stack.push((packet){follow_line_distance, ROMI_RADIUS});
           instruction = (packet){next_state, -1};
         }
+        break;
+
+      case follow_line_distance:
+        #ifdef debug
+        debug_printer(instruction, "follow_line_to_intersection", counter);
+        #endif
+        if (counter++ == 0) {  // first nb call of this move
+          if (follow_line_distance_nb(300, LF_P, instruction.data, true)){  // reset fn
+            instruction = (packet){next_state, -1};
+          }
+        } else {  // subsequent calls
+          if (follow_line_distance_nb(300, LF_P, instruction.data, false)){  // dont reset fn
+            instruction = (packet){next_state, -1};
+          }
+        }
+
         break;
 
       case wait_for_confirmation:  // TODO: Finish
@@ -409,7 +460,15 @@ void loop(){
         
         break;
 
-      case grab:  // TODO: Finish
+      /// @brief waits for 1ms at a time, basically non blocking
+      case wait:
+        if (counter++ < instruction.data) {
+          delay(1);
+        } else {  // done waiting
+          instruction = (packet){next_state, -1};
+        }
+
+      case grab:  // TODO: make NB
         #ifdef debug
         debug_printer(instruction, "grab", counter);
         #endif
@@ -424,7 +483,7 @@ void loop(){
         }
         break;
 
-      case release:  // TODO: Finish
+      case release:  // TODO: make NB
         #ifdef debug
         debug_printer(instruction, "release", counter);
         #endif
@@ -441,47 +500,83 @@ void loop(){
         debug_printer(instruction, "grab_pos", counter);
         #endif
 
-        float distance;
-        int angle_enc_count;
-        int safe_angle_enc_count;
-        if (instruction.data == 0){
-          distance = pos_0_distance;
-          angle_enc_count = pos_0_enc_cnt;
-          safe_angle_enc_count = pos_0_enc_cnt+50;
-        } else if (instruction.data == 25){
-          distance = pos_25_distance;
-          angle_enc_count = pos_25_enc_cnt;
-          safe_angle_enc_count = pos_0_enc_cnt+100;
-        } else if (instruction.data == 45){
-          distance = pos_45_distance;
-          angle_enc_count = pos_45_enc_cnt;
-          safe_angle_enc_count = pos_0_enc_cnt+100;
-        } else {
-          instruction.state = estop;
-          break;
-        }
+        {  // seperate scope so I don't have to deal with redefining vars
+          float distance;
+          float angle_enc_count;
+          float safe_angle_enc_count;
+          if (instruction.data == 0){
+            distance = pos_0_distance;
+            angle_enc_count = pos_0_enc_cnt;
+            safe_angle_enc_count = pos_0_enc_cnt+50;
+          } else if (instruction.data == 25){
+            distance = pos_25_distance;
+            angle_enc_count = pos_25_enc_cnt;
+            safe_angle_enc_count = pos_0_enc_cnt+100;
+          } else if (instruction.data == 45){
+            distance = pos_45_distance;
+            angle_enc_count = pos_45_enc_cnt;
+            safe_angle_enc_count = pos_0_enc_cnt+100;
+          } else {
+            instruction = (packet){estop, -1};
+            break;
+          }
 
-        instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count});
-        instruction_stack.push((packet){grab, -1});
-        instruction_stack.push((packet){pos_four_bar, angle_enc_count});
-        instruction_stack.push((packet){follow_line_to_distance_reading, distance});
-        instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count});
-        
-        instruction = (packet){next_state, -1};
+          instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count});
+          instruction_stack.push((packet){wait_for_confirmation, -1});
+          instruction_stack.push((packet){grab, -1});
+          instruction_stack.push((packet){pos_four_bar, angle_enc_count});
+          instruction_stack.push((packet){follow_line_to_distance_reading, distance});
+          instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count});
+          
+          instruction = (packet){next_state, -1};
+        }
         break;
 
-      case release_pos:  // TODO: Finish
+      case release_pos:
         #ifdef debug
         debug_printer(instruction, "release_pos", counter);
         #endif
 
+        {  // seperate scope so I don't have to deal with redefining vars
+          float distance;
+          int angle_enc_count;
+          float safe_angle_enc_count;
+          if (instruction.data == 0){
+            distance = pos_0_distance;
+            angle_enc_count = pos_0_enc_cnt;
+            safe_angle_enc_count = pos_0_enc_cnt+50;
+          } else if (instruction.data == 25){
+            distance = pos_25_distance;
+            angle_enc_count = pos_25_enc_cnt;
+            safe_angle_enc_count = pos_0_enc_cnt+100;
+          } else if (instruction.data == 45){
+            distance = pos_45_distance;
+            angle_enc_count = pos_45_enc_cnt;
+            safe_angle_enc_count = pos_0_enc_cnt+100;
+          } else {
+            instruction = (packet){estop, -1};
+            break;
+          }
+
+          instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count});
+          instruction_stack.push((packet){wait_for_confirmation, -1});
+          instruction_stack.push((packet){release, -1});
+          instruction_stack.push((packet){pos_four_bar, angle_enc_count});
+          instruction_stack.push((packet){follow_line_to_distance_reading, distance});
+          instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count});
+          
+          instruction = (packet){next_state, -1};
+        }
         break;
 
-      case pos_four_bar:  // TODO: Finish
+      case pos_four_bar:
         #ifdef debug
         debug_printer(instruction, "pos_four_bar", counter);
         #endif
         
+        if(motor.moveToNB(instruction.data)) {
+          instruction = (packet){next_state, -1};
+        }
         break;
     }
   }

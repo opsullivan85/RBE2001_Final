@@ -6,6 +6,7 @@ public:
     BlueMotor();
     void setEffort(int effort);
     void moveTo(long position);
+    bool moveToNB(long position);
     float get_rpm(int dt, long dp);
     long getPosition();
     void reset();
