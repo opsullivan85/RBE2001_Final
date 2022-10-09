@@ -87,11 +87,6 @@ bool on_white(int val){
 bool at_intersection(){
   int l = analogRead(REFL_L);
   int r = analogRead(REFL_R);
-  // Serial.print("left: ");
-  // Serial.println(l);
-  // Serial.print("right: ");
-  // Serial.println(r);
-  // Serial.println();
   return on_tape(l) && on_tape(r);
 }
 
@@ -150,69 +145,10 @@ int get_right_steering_effort(int base_effort, float steering_factor){
 }
 
 
-// /// @brief turns until robot is off of current line, and until it is on next line in direction.
-// ///        assumes intersection to be behind sensor
-// /// @param effort 
-// /// @param precision_effort effort used once one sensor detects the final line
-// /// @param direction -1 is left 1 is right
-// void turn_in_place_to_line(int effort, int precision_effort, int direction){
-//   int l = analogRead(REFL_L);
-//   int r = analogRead(REFL_R);
-  
-//   chassis.setMotorEfforts(effort * direction, -effort * direction);
-
-//   if (direction == -1) {  // turning left
-//     while (on_tape(l)) {  // wait for left sensor to clear tape
-//       l = analogRead(REFL_L);
-//     }
-
-//     r = analogRead(REFL_R);
-//     while (!on_tape(r)) {  // wait for right sensor to hit tape, left should be clear now
-//       r = analogRead(REFL_R);
-//     }
-    
-//     while (!on_tape(l)) {  // wait for left sensor to hit final tape
-//       l = analogRead(REFL_L);
-//     }
-
-//     // slow down
-//     chassis.setMotorEfforts(precision_effort * direction, -precision_effort * direction);
-
-//     while (!on_white(l) && !on_white(r)) {  // wait for sensors to be straddling tape
-//       l = analogRead(REFL_L);
-//       r = analogRead(REFL_R);
-//     }
-
-//   } else if (direction == 1) {  // turning right
-//     while (on_tape(r)) {  // wait for right sensor to clear tape
-//       r = analogRead(REFL_R);
-//     }
-
-//     l = analogRead(REFL_L);
-//     while (!on_tape(l)) {  // wait for left sensor to hit tape, right should be clear now
-//       l = analogRead(REFL_L);
-//     }
-    
-//     while (!on_tape(r)) {  // wait for right sensor to hit final tape
-//       r = analogRead(REFL_R);
-//     }
-
-//     // slow down
-//     chassis.setMotorEfforts(precision_effort * direction, -precision_effort * direction);
-
-//     while (!on_white(l) && !on_white(r)) {  // wait for sensors to be straddling tape
-//       l = analogRead(REFL_L);
-//       r = analogRead(REFL_R);
-//     }
-//   }
-
-//   chassis.setMotorEfforts(0, 0);
-// }
-
-
 /// @brief follows a line to the next intersection
 /// @param base_effort speed to run the motors at
 /// @param p p factor
+/// @return if the movement is completed
 bool follow_line_to_intersection_nb(int base_effort, float p){
   float steering_factor;
 
@@ -239,6 +175,7 @@ bool follow_line_to_intersection_nb(int base_effort, float p){
 /// @param p p factor
 /// @param distance distance in cm
 /// @param tolerance distance tolerance
+/// @return if the movement is completed
 bool follow_line_to_distance_reading_nb(int base_effort, float lf_p, float dst_p, float distance, float tolerance){
   float steering_factor;
   int effort;
@@ -271,6 +208,7 @@ bool follow_line_to_distance_reading_nb(int base_effort, float lf_p, float dst_p
 /// @param p p factor
 /// @param distance distance to go (cm)
 /// @param reset resets internal counter variables. use between movements
+/// @return if the movement is completed
 bool follow_line_distance_nb(int base_effort, float p, float distance, bool reset){
   static float traveled_distance = 0;
   if (reset) {traveled_distance = 0;}
@@ -295,13 +233,68 @@ bool follow_line_distance_nb(int base_effort, float p, float distance, bool rese
   }
 }
 
+/// @brief converts linear wheel distance to radians
+/// @param wheel_dst distance the wheel has moved
+/// @return radians
+float wheel_dst_to_rad(float wheel_dst){
+  return (wheel_dst / ROMI_RADIUS);
+}
+
+/// @brief converts radians to wheel linear distance
+/// @param wheel_dst distance the wheel has moved
+/// @return wheel linear distance
+float rad_to_wheel_dst(float rad){
+  return rad * ROMI_RADIUS;
+}
+
+/// @brief turns some ammount of radians clockwise
+/// @param base_effort base effort to use for movement
+/// @param p p val
+/// @param angle_rad angle to turn in rad 
+/// @param tolerance tolerance to hold the turn to
+/// @param reset resets internal counter variables. use between movements
+/// @return if the movement is completed
+bool turn_rad_nb(int base_effort, float p, float angle_rad, float tolerance, bool reset){
+  static float radians_turned = 0;
+  static float l_enc_zero = chassis.getLeftEncoderCount();
+  static float r_enc_zero = chassis.getRightEncoderCount();
+  
+  if (reset) {
+    radians_turned = 0;
+    l_enc_zero = chassis.getLeftEncoderCount();
+    r_enc_zero = chassis.getRightEncoderCount();
+  }
+  
+  float target_pos = rad_to_wheel_dst(angle_rad);
+  float l_pos = chassis.getLeftEncoderCount() - l_enc_zero;
+  float r_pos = chassis.getRightEncoderCount() - r_enc_zero;
+  float l_delta = target_pos - l_pos;
+  float r_delta = target_pos - r_pos;
+  float avg_delta = (l_delta + r_delta) / 2;
+  float l_effort = constrain(l_delta*p, 0, base_effort);
+  float r_effort = constrain(r_delta*p, 0, base_effort);
+
+  if (avg_delta <= tolerance){
+    chassis.setMotorEfforts(0,0);
+    return true;
+  }
+
+  if (angle_rad <= PI){  // turn clockwise
+    chassis.setMotorEfforts(l_effort, -r_effort);
+  } else {  // turn counterclockwise
+    chassis.setMotorEfforts(-l_effort, r_effort);
+  }
+
+  return false;
+}
+
 
 enum states {
   initilize,
   estop,
   next_state,
   turn_to_line,  // expects data for turn direction (0 left, 1 right)
-  turn_deg,  // expects an angle to turn counterclockwise (deg 0-359)
+  turn_rad,  // expects an angle to turn counterclockwise (deg 0-359)
   orient_to_intersection,  // turns and goes to intersection. 
                            // expects data for direction to turn at intersection (0 left, 1 right)
   follow_line_to_distance_reading,  // expects data for distance reading (cm)
@@ -359,7 +352,7 @@ void loop(){
         instruction_stack.push((packet){orient_to_intersection, 1});  // orient for 45 pos
 
         instruction_stack.push((packet){follow_line_to_over_intersection, -1});  // cross field
-        instruction_stack.push((packet){turn_deg, 270});  // turn to face other side of field
+        instruction_stack.push((packet){turn_rad, 270});  // turn to face other side of field
         instruction_stack.push((packet){follow_line_to_distance_reading, 10});  // go to position for crossing
         instruction_stack.push((packet){orient_to_intersection, 1});  // orient for 0 pos
 
@@ -411,9 +404,9 @@ void loop(){
         debug_printer(instruction, "turn_to_line", counter);
         #endif
 
-      case turn_deg:  // TODO: Finish
+      case turn_rad:  // TODO: Finish
         #ifdef debug
-        debug_printer(instruction, "turn_deg", counter);
+        debug_printer(instruction, "turn_rad", counter);
         #endif
 
       case follow_line_to_distance_reading:

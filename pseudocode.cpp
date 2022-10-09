@@ -289,7 +289,7 @@ enum states {
   estop,
   next_state,
   turn_to_line,  // expects data for turn direction (0 left, 1 right)
-  turn_deg,  // expects an angle to turn counterclockwise (deg 0-359)
+  turn_rad,  // expects an angle to turn counterclockwise (deg 0-359)
   orient_to_intersection,  // turns and goes to intersection. 
                            // expects data for direction to turn at intersection (0 left, 1 right)
   follow_line_to_distance_reading,  // expects data for distance reading (cm)
@@ -333,7 +333,7 @@ void loop(){
         instruction_stack.push((packet){orient_to_intersection, 1});  // orient for 45 pos
 
         instruction_stack.push((packet){follow_line_to_over_intersection, -1});  // cross field
-        instruction_stack.push((packet){turn_deg, 270});  // turn to face other side of field
+        instruction_stack.push((packet){turn_rad, 270});  // turn to face other side of field
         instruction_stack.push((packet){follow_line_to_distance_reading, 10});  // go to position for crossing
         instruction_stack.push((packet){orient_to_intersection, 1});  // orient for 0 pos
 
