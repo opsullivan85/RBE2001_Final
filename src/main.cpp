@@ -128,8 +128,9 @@ struct packet {
   int counter_init_val;  // I thought there was a way to default initilize this to zero, but I cant find it
 };
 
-void debug_printer(packet instruction, int counter){
-  static const String decoder[] = {
+
+String state_to_string(states state){
+    static const String decoder[] = {
     "initilize",
     "estop",
     "next_state",
@@ -149,12 +150,30 @@ void debug_printer(packet instruction, int counter){
     "pos_four_bar",
     "handle_ir_remote",
   };
+  return decoder[state];
+}
+
+void print_packet(packet p){
+  Serial.print(state_to_string(p.state));
+  Serial.print(" ");
+  Serial.print(p.data);
+  Serial.print(" ");
+  Serial.print(p.counter_init_val);
+}
+
+void debug_printer(packet p, int counter){
+  print_packet(p);
+  Serial.print(" ");
+  Serial.print(counter);
+}
+
+void print_instruction_stack(StackArray<packet> &instruction_stack){
+  while (!instruction_stack.isEmpty()){
+    print_packet(instruction_stack.pop());
+    Serial.println();
+  }
   Serial.println();
-  Serial.print(decoder[instruction.state]);
-  Serial.print(" ");
-  Serial.print(instruction.data);
-  Serial.print(" ");
-  Serial.println(counter);
+
 }
 
 void loop(){
@@ -169,7 +188,9 @@ void loop(){
 
   while (true){
     #ifdef debug
+    Serial.println();
     debug_printer(instruction, counter);
+    Serial.println();
     #endif
 
     ir_remote_code = decoder.getKeyCode();  // read ir remote
