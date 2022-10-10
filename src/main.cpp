@@ -2,11 +2,13 @@
 #include <Romi32U4.h>
 #include <Chassis.h>
 #include <Rangefinder.h>
+#include <IRdecoder.h>
+#include <ir_codes.h>
 #include "StackArray.h"
 #include "BlueMotor.h"
 #include "servo32u4.h"
 
-#define REFL_L 22
+#define REFL_L 22 
 #define REFL_R 20
 #define TAPE_THRESHOLD 400  // vals over are considered on tape
 #define WHITE_THRESHOLD 40  // vals under are considered on white
@@ -27,11 +29,13 @@ Servo32U4 servo;
 Chassis chassis;
 Romi32U4ButtonB buttonB;
 Romi32U4ButtonC buttonC;
+IRDecoder decoder(14);
 
 void setup()
 {
   Serial.begin(9600);
   chassis.init();
+  decoder.init();
   rangefinder.init();
   pinMode(REFL_L, INPUT);
   motor.setup();
@@ -333,23 +337,77 @@ Servo32U4Base::grabber_move_state servo_goto_nb(int pos, bool reset){  // TODO: 
 
 
 enum states {
+  /// @brief sets up the state machine
+  /// @param data unused
   initilize,
+
+  /// @brief safely stops the robot
+  /// @param data unused
   estop,
+  
+  /// @brief advances the state machine
+  /// @param data unused
   next_state,
-  turn_to_line,  // expects data for turn direction (0 left, 1 right)
-  turn_rad,  // expects an angle to turn counterclockwise (deg 0-359)
-  orient_to_intersection,  // turns and goes to intersection. 
-                           // expects data for direction to turn at intersection (0 left, 1 right)
-  follow_line_to_distance_reading,  // expects data for distance reading (cm)
+
+  /// @brief turns to the next line in the specified direction
+  /// @param data turn direction (0 left, 1 right)
+  turn_to_line,
+
+  /// @brief turns some ammount of radians
+  /// @param data angle to turn counterclockwise (rad)
+  turn_rad,
+
+  /// @brief turns and goes to intersection.
+  /// @param data direction to turn at intersection (0 left, 1 right)
+  orient_to_intersection,
+
+  /// @brief follows line until specified distance sensor reading
+  /// @param data distance reading (cm)
+  follow_line_to_distance_reading,
+
+  /// @brief follows line until romi is centered over intersection
+  /// @param data unused
   follow_line_to_over_intersection,
-  follow_line_distance,  // expects data for distance to move (cm)
+
+  /// @brief follows line for a specified distance
+  /// @param data distance to move (cm)
+  follow_line_distance,
+
+  /// @brief wait for confirmation on ir remote
+  /// @param data unused
   wait_for_confirmation,
-  wait,  // expects data for time to wait, (~ms)
+
+  /// @brief waits for some time
+  /// @param data time to wait, (~ms)
+  wait,
+
+  /// @brief closes the grabber
+  /// @param data unused
   grab,
+
+  /// @brief opens the grabber
+  /// @param data unused
   release,
-  grab_pos,  // expects data for four bar position (deg)
-  release_pos,  // expects data for four bar position (deg)
-  pos_four_bar,  // expects data for four bar position (deg)
+
+  /// @brief follows line to and grabs plate from platform
+  ///        at specified angle
+  /// @param data four bar position (deg)
+  grab_pos,
+
+  /// @brief follows line to and releases plate onto platform
+  ///        at specified angle
+  /// @param data four bar position (deg)
+  release_pos,
+
+  /// @brief positions the four bar at specified angle
+  /// @param data four bar position (deg)
+  pos_four_bar,
+
+  /// @brief handles ir remote input.
+  ///        treats everything but play_pause as estop.
+  ///        temporarily interrupts instructions, resets counter.
+  /// @param data unused
+  handle_ir_remote,  
 };
 
 struct packet {
@@ -362,20 +420,20 @@ void debug_printer(packet instruction, int counter){
     "initilize",
     "estop",
     "next_state",
-    "turn_to_line",  // expects data for turn direction (0 left, 1 right)
-    "turn_rad",  // expects an angle to turn counterclockwise (deg 0-359)
-    "orient_to_intersection",  // turns and goes to intersection. 
-                            // expects data for direction to turn at intersection (0 left, 1 right)
-    "follow_line_to_distance_reading",  // expects data for distance reading (cm)
+    "turn_to_line",
+    "turn_rad",
+    "orient_to_intersection",
+    "follow_line_to_distance_reading",
     "follow_line_to_over_intersection",
-    "follow_line_distance",  // expects data for distance to move (cm)
+    "follow_line_distance",
     "wait_for_confirmation",
-    "wait",  // expects data for time to wait, (~ms)
+    "wait",
     "grab",
     "release",
-    "grab_pos",  // expects data for four bar position (deg)
-    "release_pos",  // expects data for four bar position (deg)
-    "pos_four_bar",  // expects data for four bar position (deg)
+    "grab_pos",
+    "release_pos",
+    "pos_four_bar",
+    "handle_ir_remote",
   };
   Serial.println();
   Serial.print(decoder[instruction.state]);
@@ -388,19 +446,17 @@ void debug_printer(packet instruction, int counter){
 void loop(){
   #define debug
   StackArray<packet> instruction_stack;
-  // instruction_stack.push((packet){initilize, -1});
-  instruction_stack.push((packet){grab, -1});
+  instruction_stack.push((packet){initilize, -1});
   packet instruction = (packet){next_state, -1};
-  int counter = 0;  // resets between states
+  int counter = 0;  // resets between states, is reset when the ir_remote signals
+  int ir_remote_code;
 
   while (true){
     #ifdef debug
     debug_printer(instruction, counter);
     #endif
 
-    if(buttonB.isPressed()){
-      instruction = (packet){estop, -1};
-    }
+    ir_remote_code = decoder.getKeyCode();  // read ir remote
 
     switch (instruction.state) {
       case initilize:
@@ -487,6 +543,9 @@ void loop(){
         break;
 
       case wait_for_confirmation:  // TODO: Finish
+        if (ir_remote_code == PLAY_PAUSE) {
+          instruction = (packet){next_state, -1};
+        }
         break;
 
       /// @brief waits for 1ms at a time, basically non blocking
@@ -613,6 +672,24 @@ void loop(){
           instruction = (packet){next_state, -1};
         }
         break;
+
+      case handle_ir_remote:
+        if (instruction.data != PLAY_PAUSE){
+          instruction = (packet){estop, -1};
+        } else {
+          instruction = (packet){next_state, -1};
+        }
+        break;
+    }
+
+    // handle un-caught ir codes
+    if(ir_remote_code >= 0){
+      // this method of interrupting the stack will mess with 
+      // any states that use counters to keep track of things
+      // this shouldn't be a major issue, counter is mainly used for timing
+      instruction_stack.push(instruction);
+      instruction_stack.push((packet){handle_ir_remote, ir_remote_code});
+      instruction = (packet){next_state, -1};
     }
   }
 }
