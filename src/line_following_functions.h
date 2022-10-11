@@ -153,10 +153,6 @@ bool follow_line_to_distance_reading_nb(int base_effort, float lf_p, float dst_p
   if (abs(current_distance - distance) >= tolerance){
     effort = dst_sensor_p_control(base_effort, dst_p, current_distance, distance);
     steering_factor = get_line_following_steering_factor(lf_p);
-    // Serial.println(effort);
-    // Serial.println(steering_factor);
-    // Serial.println();
-    // Serial.println();
     chassis.setMotorEfforts(get_left_steering_effort(effort, steering_factor),
       get_right_steering_effort(effort, steering_factor));
     current_distance = read_dst_sensor();

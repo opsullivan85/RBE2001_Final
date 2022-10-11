@@ -12,6 +12,7 @@
 #include "turning_functions.h"
 
 #define LF_P 0.0002
+#define LINE_FOLLOWING_EFFORT 150
 #define DST_P 0.17
 #define TURN_P 0.4
 #define TURN_EFFORT 100
@@ -143,9 +144,9 @@ String state_to_string(states state){
     "initilize",
     "estop",
     "next_state",
-    "turn_to_line",  //TODO: verify
-    "turn_rad",  //TODO: verify
-    "turn_to_next_line",  //TODO: verify
+    "turn_to_line",
+    "turn_rad",
+    "turn_to_next_line",
     "orient_to_intersection",  //TODO: verify
     "follow_line_to_distance_reading",  //TODO: verify
     "follow_line_to_over_intersection",
@@ -203,7 +204,7 @@ void loop(){
   #define debug
   StackArray<packet> instruction_stack;
   // instruction_stack.push((packet){initilize, -1, 0});
-  instruction_stack.push((packet){turn_rad, PI/2, 0});
+  instruction_stack.push((packet){follow_line_to_distance_reading, 12, 0});
   packet instruction = (packet){next_state, -1, 0};
 
   /// @brief used to track data between state calls.
@@ -274,13 +275,13 @@ void loop(){
 
       case turn_to_line:
         if (instruction.data == 0) {  // left
-          chassis.setMotorEfforts(-100, 100);
+          chassis.setMotorEfforts(-TURN_EFFORT, TURN_EFFORT);
           if (on_tape(analogRead(REFL_R))){
             chassis.setMotorEfforts(0,0);
             instruction = (packet){next_state, -1, 0};
           }
         } else {  // instruction.data == 1  // right
-          chassis.setMotorEfforts(100, -100);
+          chassis.setMotorEfforts(TURN_EFFORT, -TURN_EFFORT);
           if (on_tape(analogRead(REFL_L))){
             chassis.setMotorEfforts(0,0);
             instruction = (packet){next_state, -1, 0};
@@ -302,23 +303,23 @@ void loop(){
         break;
 
       case turn_to_next_line:
-        if(instruction.data == 0){
-          instruction_stack.push((packet){turn_rad, 0.1, 0});
-        } else {  // instruction.data == 1
-          instruction_stack.push((packet){turn_rad, -0.1, 0});
-        }
         instruction_stack.push((packet){turn_to_line, instruction.data, 0});
+        if(instruction.data == 0){
+          instruction_stack.push((packet){turn_rad, -PI/8, 0});
+        } else {  // instruction.data == 1
+          instruction_stack.push((packet){turn_rad, PI/8, 0});
+        }
         instruction = (packet){next_state, -1, 0};
         break;
 
       case follow_line_to_distance_reading:
-        if (follow_line_to_distance_reading_nb(300, LF_P, DST_P, 120, 0.1)){
+        if (follow_line_to_distance_reading_nb(LINE_FOLLOWING_EFFORT, LF_P, DST_P, 120, 0.1)){
           instruction = (packet){next_state, -1, 0};
         }
         break;
 
       case follow_line_to_over_intersection:
-        if (follow_line_to_intersection_nb(300, LF_P)){
+        if (follow_line_to_intersection_nb(LINE_FOLLOWING_EFFORT, LF_P)){
           instruction_stack.push((packet){follow_line_distance, ROMI_RADIUS, 0});
           instruction = (packet){next_state, -1, 0};
         }
@@ -326,11 +327,11 @@ void loop(){
 
       case follow_line_distance:
         if (counter++ == 0) {  // first nb call of this move
-          if (follow_line_distance_nb(300, LF_P, instruction.data, true)){  // reset fn
+          if (follow_line_distance_nb(LINE_FOLLOWING_EFFORT, LF_P, instruction.data, true)){  // reset fn
             instruction = (packet){next_state, -1, 0};
           }
         } else {  // subsequent calls
-          if (follow_line_distance_nb(300, LF_P, instruction.data, false)){  // dont reset fn
+          if (follow_line_distance_nb(LINE_FOLLOWING_EFFORT, LF_P, instruction.data, false)){  // dont reset fn
             instruction = (packet){next_state, -1, 0};
           }
         }
