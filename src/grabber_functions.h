@@ -15,14 +15,8 @@ Servo32U4Base::grabber_move_state servo_goto_nb(int pos, bool reset){  // TODO: 
     prev_pos = curr_pos + stall_tolerance + 1;
   }
 
-  Serial.print("curr_pos: ");
-  Serial.println(curr_pos);
-  Serial.print("tar_pos: ");
-  Serial.println(tar_pos);
-  Serial.print("prev_pos: ");
-  Serial.println(prev_pos);
-
   servo.writeMicroseconds(pos);
+  
   if(abs(curr_pos - prev_pos)>stall_tolerance && abs(curr_pos - tar_pos)>position_tolerance){  // servo still moving
     prev_pos = curr_pos;
     return (Servo32U4Base::grabber_move_state::in_progress);
@@ -31,5 +25,4 @@ Servo32U4Base::grabber_move_state servo_goto_nb(int pos, bool reset){  // TODO: 
   }else { //if (abs(curr_pos - tar_pos)<10) move done
     return (Servo32U4Base::grabber_move_state::success);
   }
-  // delay(20);
 }

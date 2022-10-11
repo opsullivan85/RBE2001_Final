@@ -11,7 +11,7 @@
 #include "grabber_functions.h"
 #include "turning_functions.h"
 
-#define LF_P 0.0005
+#define LF_P 0.0002
 #define DST_P 0.17
 #define pos_0_enc_cnt 0
 #define pos_0_distance 5.0
@@ -25,7 +25,6 @@ Rangefinder rangefinder(17,12);
 Servo32U4 servo;
 Chassis chassis;
 Romi32U4ButtonB buttonB;
-Romi32U4ButtonC buttonC;
 IRDecoder decoder(14);
 
 void setup()
@@ -40,6 +39,13 @@ void setup()
   pinMode(REFL_R, INPUT);
   buttonB.waitForButton();
   delay(500);
+  
+  // int counter = 0;
+  // while(true){
+  //   servo.writeMicroseconds(1000);
+  //   Serial.println("alive");
+  //   Serial.println(counter++);
+  // }
 }
 
 
@@ -116,7 +122,7 @@ enum states {
   pos_four_bar,
 
   /// @brief handles ir remote input.
-  ///        treats everything but play_pause as estop.
+  ///        treats everything but ENTER_SAVE as estop.
   ///        temporarily interrupts instructions, resets counter.
   /// @param data unused
   handle_ir_remote,  
@@ -134,19 +140,19 @@ String state_to_string(states state){
     "initilize",
     "estop",
     "next_state",
-    "turn_to_line",
-    "turn_rad",
-    "turn_to_next_line",
-    "orient_to_intersection",
-    "follow_line_to_distance_reading",
+    "turn_to_line",  //TODO: verify
+    "turn_rad",  //TODO: verify
+    "turn_to_next_line",  //TODO: verify
+    "orient_to_intersection",  //TODO: verify
+    "follow_line_to_distance_reading",  //TODO: verify
     "follow_line_to_over_intersection",
     "follow_line_distance",
     "wait_for_confirmation",
     "wait",
     "grab",
     "release",
-    "grab_pos",
-    "release_pos",
+    "grab_pos",  //TODO: verify
+    "release_pos",  //TODO: verify
     "pos_four_bar",
     "handle_ir_remote",
   };
@@ -164,10 +170,10 @@ void print_packet(packet p){
 void debug_printer(packet p, int counter){
   if(p.state != wait || counter == 0){  // only print the first wait, cut down on noise
     Serial.println();
+    if(p.state == next_state){Serial.print(" ");}
     print_packet(p);
     Serial.print(" ");
     Serial.print(counter);
-    Serial.println();
   }
 }
 
@@ -183,7 +189,7 @@ void print_instruction_stack(StackArray<packet> &instruction_stack){
     Serial.println();
   }
   Serial.println();
-  
+
   while (!tmp_stack.isEmpty()){
     instruction_stack.push(tmp_stack.pop());
   }
@@ -193,8 +199,7 @@ void print_instruction_stack(StackArray<packet> &instruction_stack){
 void loop(){
   #define debug
   StackArray<packet> instruction_stack;
-  // instruction_stack.push((packet){initilize, -1, 0});
-  instruction_stack.push((packet){grab, -1, 0});
+  instruction_stack.push((packet){initilize, -1, 0});
   packet instruction = (packet){next_state, -1, 0};
 
   /// @brief used to track data between state calls.
@@ -205,10 +210,10 @@ void loop(){
   while (true){
     #ifdef debug
     debug_printer(instruction, counter);
+    // print_instruction_stack(instruction_stack);
     #endif
 
     ir_remote_code = decoder.getKeyCode();  // read ir remote
-
     switch (instruction.state) {
       case initilize:
         // this is a stack so instructions should be read bottom up
@@ -234,7 +239,7 @@ void loop(){
         instruction_stack.push((packet){release_pos, 0, 0});  // release old plate at 0 deg pos
 
         instruction_stack.push((packet){orient_to_intersection, 1, 0});  // orient for 0 pos
-        instruction_stack.push((packet){grab_pos, 45, 0});  // grab from 45 deg pos
+        instruction_stack.push((packet){grab_pos, 45, 0});  // grab from 4F5 deg pos
 
         instruction = (packet){next_state, -1, 0};
         break;
@@ -249,6 +254,7 @@ void loop(){
       case estop:
         motor.setEffort(0);
         chassis.idle();
+        servo_goto_nb(Servo32U4Base::grabber_open_pos, true);
 
         while(true) {delay(10);}
         break;
@@ -328,7 +334,7 @@ void loop(){
         break;
 
       case wait_for_confirmation:
-        if (ir_remote_code == PLAY_PAUSE) {
+        if (ir_remote_code == ENTER_SAVE) {
           instruction = (packet){next_state, -1, 0};
         }
         break;
@@ -343,7 +349,6 @@ void loop(){
         if(wait_timer + instruction.data <= millis()) {  // done waiting
           instruction = (packet){next_state, -1, 0};
         } else {  // keep waiting
-          delay(1);
           counter = constrain((int)(wait_timer + instruction.data - millis()),1, __INT_MAX__);
         }
         break;
@@ -467,7 +472,7 @@ void loop(){
         break;
 
       case handle_ir_remote:
-        if (instruction.data != PLAY_PAUSE){
+        if (instruction.data != ENTER_SAVE){
           instruction = (packet){estop, -1, 0};
         } else {
           instruction = (packet){next_state, -1, 0};

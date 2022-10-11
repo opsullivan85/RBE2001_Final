@@ -175,10 +175,14 @@ bool follow_line_to_distance_reading_nb(int base_effort, float lf_p, float dst_p
 /// @return if the movement is completed
 bool follow_line_distance_nb(int base_effort, float p, float distance, bool reset){
   static float traveled_distance = 0;
-  if (reset) {traveled_distance = 0;}
+  static int l_start_enc_cnt = chassis.getLeftEncoderCount();
+  static int r_start_enc_cnt = chassis.getLeftEncoderCount();
+  if (reset) {
+    traveled_distance = 0;
+    l_start_enc_cnt = chassis.getLeftEncoderCount();
+    r_start_enc_cnt = chassis.getLeftEncoderCount();
+  }
   float correction;
-  int l_start_enc_cnt = chassis.getLeftEncoderCount();
-  int r_start_enc_cnt = chassis.getLeftEncoderCount();
   int l_enc_delta;
   int r_enc_delta;
 
