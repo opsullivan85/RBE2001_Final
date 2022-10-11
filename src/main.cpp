@@ -13,6 +13,9 @@
 
 #define LF_P 0.0002
 #define DST_P 0.17
+#define TURN_P 0.4
+#define TURN_EFFORT 100
+#define TURN_TOLERANCE 10
 #define pos_0_enc_cnt 0
 #define pos_0_distance 5.0
 #define pos_45_enc_cnt 3892
@@ -118,7 +121,7 @@ enum states {
   release_pos,
 
   /// @brief positions the four bar at specified angle
-  /// @param data four bar position (deg)
+  /// @param data four bar position (encoder counts)
   pos_four_bar,
 
   /// @brief handles ir remote input.
@@ -199,7 +202,8 @@ void print_instruction_stack(StackArray<packet> &instruction_stack){
 void loop(){
   #define debug
   StackArray<packet> instruction_stack;
-  instruction_stack.push((packet){initilize, -1, 0});
+  // instruction_stack.push((packet){initilize, -1, 0});
+  instruction_stack.push((packet){turn_rad, PI/2, 0});
   packet instruction = (packet){next_state, -1, 0};
 
   /// @brief used to track data between state calls.
@@ -287,11 +291,11 @@ void loop(){
 
       case turn_rad:
         if(counter++ == 0){
-          if (turn_rad_nb(100, 0.02, instruction.data, 1, true)) {
+          if (turn_rad_nb(TURN_EFFORT, TURN_P, instruction.data, TURN_TOLERANCE, true)) {
             instruction = (packet){next_state, -1, 0};
           }
         } else {
-          if (turn_rad_nb(100, 0.02, instruction.data, 1, false)) {
+          if (turn_rad_nb(TURN_EFFORT, TURN_P, instruction.data, TURN_TOLERANCE, false)) {
             instruction = (packet){next_state, -1, 0};
           }
         }

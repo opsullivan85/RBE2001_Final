@@ -53,6 +53,16 @@ void Chassis::idle(void)
  * */
 void Chassis::setMotorEfforts(int leftEffort, int rightEffort)
 {
+    if(leftEffort < 0){
+        leftEffort = constrain(leftEffort, -__INT_MAX__, -chassis.min_motor_effort);
+    } else if(leftEffort > 0){
+        leftEffort = constrain(leftEffort, chassis.min_motor_effort, __INT_MAX__);
+    }
+    if(rightEffort < 0){
+        rightEffort = constrain(rightEffort, -__INT_MAX__, -chassis.min_motor_effort);
+    } else if(rightEffort > 0){
+        rightEffort = constrain(rightEffort, chassis.min_motor_effort, __INT_MAX__);
+    }
     leftMotor.setMotorEffort(leftEffort);
     rightMotor.setMotorEffort(rightEffort);
 }

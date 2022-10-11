@@ -11,7 +11,7 @@ float wheel_dst_to_rad(float wheel_dst){
 /// @param wheel_dst distance the wheel has moved
 /// @return wheel linear distance
 float rad_to_wheel_dst(float rad){
-  return rad * ROMI_RADIUS;
+  return rad * ROMI_RADIUS / chassis.cmPerEncoderTick;
 }
 
 /// @brief turns some ammount of radians clockwise
@@ -33,11 +33,34 @@ bool turn_rad_nb(int base_effort, float p, float angle_rad, float tolerance, boo
   float target_pos = rad_to_wheel_dst(angle_rad);
   float l_pos = chassis.getLeftEncoderCount() - l_enc_zero;
   float r_pos = chassis.getRightEncoderCount() - r_enc_zero;
-  float l_delta = target_pos - l_pos;
-  float r_delta = target_pos - r_pos;
-  float avg_delta = (l_delta + r_delta) / 2;
-  float l_effort = constrain(l_delta*p, 0, base_effort);
-  float r_effort = constrain(r_delta*p, 0, base_effort);
+  float l_delta = target_pos - abs(l_pos);
+  float r_delta = target_pos - abs(r_pos);
+  float avg_delta = (abs(l_delta) + abs(r_delta)) / 2;
+  float l_effort = l_delta*p;
+  float r_effort = r_delta*p;
+
+  l_effort = constrain(l_effort, -base_effort, base_effort);
+  r_effort = constrain(r_effort, -base_effort, base_effort);
+
+  Serial.println();
+  Serial.print("target_pos ");
+  Serial.println(target_pos);
+  Serial.print("l_pos ");
+  Serial.println(l_pos);
+  Serial.print("r_pos ");
+  Serial.println(r_pos);
+  Serial.print("l_delta ");
+  Serial.println(l_delta);
+  Serial.print("r_delta ");
+  Serial.println(r_delta);
+  Serial.print("l_effort ");
+  Serial.println(l_effort);
+  Serial.print("r_effort ");
+  Serial.println(r_effort);
+  Serial.print("avg_delta ");
+  Serial.println(avg_delta);
+  Serial.println();
+  delay(20);
 
   if (avg_delta <= tolerance){
     chassis.setMotorEfforts(0,0);
