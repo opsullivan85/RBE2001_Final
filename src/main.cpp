@@ -179,12 +179,14 @@ void print_instruction_stack(StackArray<packet> &instruction_stack){
 void loop(){
   #define debug
   StackArray<packet> instruction_stack;
-  instruction_stack.push((packet){initilize, -1, 0});
+  // instruction_stack.push((packet){initilize, -1, 0});
+  instruction_stack.push((packet){grab, -1, 0});
   packet instruction = (packet){next_state, -1, 0};
 
   /// @brief used to track data between state calls.
   int counter = 0;
   int ir_remote_code;
+  unsigned long wait_timer;
 
   while (true){
     #ifdef debug
@@ -319,12 +321,18 @@ void loop(){
         }
         break;
 
-      /// @brief waits for 1ms at a time, basically non blocking
+      /// @brief waits for 0.5ms at a time, basically non blocking
       case wait:
-        if (counter++ < instruction.data) {
-          delay(1);
-        } else {  // done waiting
+        if (counter == 0) {
+          counter++;
+          wait_timer = millis();
+        } 
+        
+        if(wait_timer + instruction.data <= millis()) {  // done waiting
           instruction = (packet){next_state, -1, 0};
+        } else {  // keep waiting
+          delayMicroseconds(500);
+          counter = (int)(wait_timer + instruction.data - millis());
         }
         break;
 
@@ -348,6 +356,9 @@ void loop(){
             Serial.println("failure");
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
             Serial.println("in_progress");
+            instruction_stack.push((packet){grab, -1, counter});
+            instruction_stack.push((packet){wait, 30, 0});
+            instruction = (packet){next_state, -1, 0};
           }
         }
         break;
@@ -364,10 +375,15 @@ void loop(){
 
           if (servo_state == Servo32U4Base::grabber_move_state::success){
             instruction = (packet){next_state, -1, 0};
-          } else if (servo_state == Servo32U4Base::grabber_move_state::failure){
+            Serial.println("success");
+          } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // give up
             instruction = (packet){estop, -1, 0};
+            Serial.println("failure");
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
-            break;
+            Serial.println("in_progress");
+            instruction_stack.push((packet){release, -1, counter});
+            instruction_stack.push((packet){wait, 30, 0});
+            instruction = (packet){next_state, -1, 0};
           }
         }
         break;
