@@ -162,17 +162,31 @@ void print_packet(packet p){
 }
 
 void debug_printer(packet p, int counter){
-  print_packet(p);
-  Serial.print(" ");
-  Serial.print(counter);
+  if(p.state != wait || counter == 0){  // only print the first wait, cut down on noise
+    Serial.println();
+    print_packet(p);
+    Serial.print(" ");
+    Serial.print(counter);
+    Serial.println();
+  }
 }
 
 void print_instruction_stack(StackArray<packet> &instruction_stack){
+  StackArray<packet> tmp_stack;
+  packet tmp_packet;
+
+  Serial.println();
   while (!instruction_stack.isEmpty()){
-    print_packet(instruction_stack.pop());
+    tmp_packet = instruction_stack.pop();
+    tmp_stack.push(tmp_packet);
+    print_packet(tmp_packet);
     Serial.println();
   }
   Serial.println();
+  
+  while (!tmp_stack.isEmpty()){
+    instruction_stack.push(tmp_stack.pop());
+  }
 
 }
 
@@ -190,9 +204,7 @@ void loop(){
 
   while (true){
     #ifdef debug
-    Serial.println();
     debug_printer(instruction, counter);
-    Serial.println();
     #endif
 
     ir_remote_code = decoder.getKeyCode();  // read ir remote
@@ -326,13 +338,13 @@ void loop(){
         if (counter == 0) {
           counter++;
           wait_timer = millis();
-        } 
+        }
         
         if(wait_timer + instruction.data <= millis()) {  // done waiting
           instruction = (packet){next_state, -1, 0};
         } else {  // keep waiting
-          delayMicroseconds(500);
-          counter = (int)(wait_timer + instruction.data - millis());
+          delay(1);
+          counter = constrain((int)(wait_timer + instruction.data - millis()),1, __INT_MAX__);
         }
         break;
 
@@ -348,16 +360,13 @@ void loop(){
 
           if (servo_state == Servo32U4Base::grabber_move_state::success){
             instruction = (packet){next_state, -1, 0};
-            Serial.println("success");
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // just try again
             instruction_stack.push((packet){grab, -1, 0});
             instruction_stack.push((packet){release, -1, 0});
             instruction = (packet){next_state, -1, 0};
-            Serial.println("failure");
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
-            Serial.println("in_progress");
             instruction_stack.push((packet){grab, -1, counter});
-            instruction_stack.push((packet){wait, 30, 0});
+            instruction_stack.push((packet){wait, 20, 0});
             instruction = (packet){next_state, -1, 0};
           }
         }
@@ -375,12 +384,9 @@ void loop(){
 
           if (servo_state == Servo32U4Base::grabber_move_state::success){
             instruction = (packet){next_state, -1, 0};
-            Serial.println("success");
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // give up
             instruction = (packet){estop, -1, 0};
-            Serial.println("failure");
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
-            Serial.println("in_progress");
             instruction_stack.push((packet){release, -1, counter});
             instruction_stack.push((packet){wait, 30, 0});
             instruction = (packet){next_state, -1, 0};
