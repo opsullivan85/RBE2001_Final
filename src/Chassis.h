@@ -21,7 +21,7 @@ public:
     LeftMotor leftMotor;
     RightMotor rightMotor;
     const float cmPerEncoderTick;
-    int min_motor_effort = 40;
+    int min_motor_effort = 70;
 
 protected:
     const float robotRadius;

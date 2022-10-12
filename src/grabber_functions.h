@@ -6,7 +6,7 @@ extern Servo32U4 servo;
 /// @param reset resets internal counter variables. use between movements
 /// @return grabber_move_state
 Servo32U4Base::grabber_move_state servo_goto_nb(int pos, bool reset){  // TODO: check logic, not working rn
-  const static int stall_tolerance = 5;
+  const static int stall_tolerance = 2;
   const static int position_tolerance = 10;
   int curr_pos = analogRead(servo.Servo_sense);
   int tar_pos = servo.microsec_to_pos(pos);  //converts position in microseconds to resistor value

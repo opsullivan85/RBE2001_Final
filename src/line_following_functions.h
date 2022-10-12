@@ -155,7 +155,6 @@ bool follow_line_to_distance_reading_nb(int base_effort, float lf_p, float dst_p
     steering_factor = get_line_following_steering_factor(lf_p);
     chassis.setMotorEfforts(get_left_steering_effort(effort, steering_factor),
       get_right_steering_effort(effort, steering_factor));
-    current_distance = read_dst_sensor();
     return (false);
   } else {
     return (true);

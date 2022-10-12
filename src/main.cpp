@@ -11,22 +11,26 @@
 #include "grabber_functions.h"
 #include "turning_functions.h"
 
-#define LF_P 0.0006
-#define LINE_FOLLOWING_EFFORT 200
-#define DST_P 0.17
-#define DST_TOLERANCE 0.3
-#define TURN_P 0.4
-#define TURN_EFFORT 100
+
+#define debug
+// #define verbose_debug
+
+#define LF_P 0.00055
+#define LINE_FOLLOWING_EFFORT 265
+#define DST_P 0.35
+#define DST_TOLERANCE 0.4
+#define TURN_P 0.3
+#define TURN_EFFORT 70
 #define TURN_TOLERANCE 10
 #define pos_0_enc_cnt 0
-#define pos_0_safe_offset 100
-#define pos_0_distance 7.5
+#define pos_0_safe_offset 500
+#define pos_0_distance 9
 #define pos_45_enc_cnt 4042
 #define pos_45_safe_offset 500
-#define pos_45_distance 15.0
+#define pos_45_distance 13.5
 #define pos_25_enc_cnt 8013
-#define pos_25_safe_offset -500
-#define pos_25_distance 7.0
+#define pos_25_safe_offset -300
+#define pos_25_distance 8
 
 BlueMotor motor;
 Rangefinder rangefinder(17,12);
@@ -46,8 +50,8 @@ void setup()
   servo.setMinMaxMicroseconds(500, 2500);   //1035 closed, 1900 open
   pinMode(REFL_R, INPUT);
 
-  buttonB.waitForButton();
-  delay(500);
+  // buttonB.waitForButton();
+  // delay(500);
 }
 
 
@@ -170,13 +174,21 @@ void print_packet(packet p){
 }
 
 void debug_printer(packet p, int counter){
-  if(p.state != wait || counter == 0){  // only print the first wait, cut down on noise
-    Serial.println();
-    if(p.state == next_state){Serial.print(" ");}
-    print_packet(p);
-    Serial.print(" ");
-    Serial.print(counter);
+  #ifndef verbose_debug
+  static states prev_state = p.state;
+  if (p.state != prev_state){
+    prev_state = p.state;
+  #endif
+    if(p.state != wait || counter == 0){  // only print the first wait, cut down on noise
+      Serial.println();
+      if(p.state == next_state){Serial.print(" ");}
+      print_packet(p);
+      Serial.print(" ");
+      Serial.print(counter);
+    }
+  #ifndef verbose_debug
   }
+  #endif
 }
 
 void print_instruction_stack(StackArray<packet> &instruction_stack){
@@ -199,10 +211,13 @@ void print_instruction_stack(StackArray<packet> &instruction_stack){
 }
 
 void loop(){
-  #define debug
   StackArray<packet> instruction_stack;
   // instruction_stack.push((packet){initilize, -1, 0});
-  instruction_stack.push((packet){grab_pos, 45, 0});
+  // instruction_stack.push((packet){release_pos, 0, 0});
+  // instruction_stack.push((packet){orient_to_intersection, 0, 0});
+  instruction_stack.push((packet){grab_pos, 25, 0});
+  instruction_stack.push((packet){wait_for_confirmation, -1, 0});
+  
   packet instruction = (packet){next_state, -1, 0};
 
   /// @brief used to track data between state calls.
@@ -248,9 +263,9 @@ void loop(){
         break;
 
       case orient_to_intersection:
-        instruction_stack.push((packet){turn_to_line, instruction.data, 0});  // turn specified direction
+        instruction_stack.push((packet){turn_to_next_line, instruction.data, 0});  // turn specified direction
         instruction_stack.push((packet){follow_line_to_over_intersection, -1, 0});  // go to intersection
-        instruction_stack.push((packet){turn_to_line, 1, 0});  // full turn on single line
+        instruction_stack.push((packet){turn_to_next_line, 1, 0});  // full turn on single line
         instruction = (packet){next_state, -1, 0};
         break;
 
@@ -258,8 +273,6 @@ void loop(){
         motor.setEffort(0);
         chassis.idle();
         servo_goto_nb(Servo32U4Base::grabber_open_pos, true);
-
-        motor.moveTo(0);
 
         while(true) {delay(10);}
         break;
@@ -314,12 +327,14 @@ void loop(){
 
       case follow_line_to_distance_reading:
         if (follow_line_to_distance_reading_nb(LINE_FOLLOWING_EFFORT, LF_P, DST_P, instruction.data, DST_TOLERANCE)){
+          chassis.setMotorEfforts(0,0);
           instruction = (packet){next_state, -1, 0};
         }
         break;
 
       case follow_line_to_over_intersection:
         if (follow_line_to_intersection_nb(LINE_FOLLOWING_EFFORT, LF_P)){
+          chassis.setMotorEfforts(0,0);
           instruction_stack.push((packet){follow_line_distance, ROMI_RADIUS, 0});
           instruction = (packet){next_state, -1, 0};
         }
@@ -328,10 +343,12 @@ void loop(){
       case follow_line_distance:
         if (counter++ == 0) {  // first nb call of this move
           if (follow_line_distance_nb(LINE_FOLLOWING_EFFORT, LF_P, instruction.data, true)){  // reset fn
+            chassis.setMotorEfforts(0,0);
             instruction = (packet){next_state, -1, 0};
           }
         } else {  // subsequent calls
           if (follow_line_distance_nb(LINE_FOLLOWING_EFFORT, LF_P, instruction.data, false)){  // dont reset fn
+            chassis.setMotorEfforts(0,0);
             instruction = (packet){next_state, -1, 0};
           }
         }
@@ -405,7 +422,10 @@ void loop(){
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // give up
             Serial.println();
             Serial.println(" - failure");
-            instruction = (packet){estop, -1, 0};
+            
+            instruction_stack.push((packet){release, -1, 0});
+            instruction = (packet){next_state, -1, 0};
+            // instruction = (packet){estop, -1, 0};
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
             Serial.println();
             Serial.println(" - in_progress");
@@ -438,13 +458,13 @@ void loop(){
             break;
           }
 
+          instruction_stack.push((packet){follow_line_to_distance_reading, distance + 5, 0});
           instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count, 0});
-          instruction_stack.push((packet){wait_for_confirmation, -1, 0});
           instruction_stack.push((packet){grab, -1, 0});
-          instruction_stack.push((packet){pos_four_bar, angle_enc_count, 0});
+          instruction_stack.push((packet){wait_for_confirmation, -1, 0});
           instruction_stack.push((packet){follow_line_to_distance_reading, distance, 0});
           instruction_stack.push((packet){release, -1, 0});
-          instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count, 0});
+          instruction_stack.push((packet){pos_four_bar, angle_enc_count, 0});
           
           instruction = (packet){next_state, -1, 0};
         }
@@ -458,26 +478,28 @@ void loop(){
           if (instruction.data == 0){
             distance = pos_0_distance;
             angle_enc_count = pos_0_enc_cnt;
-            safe_angle_enc_count = pos_0_enc_cnt+50;
+            safe_angle_enc_count = pos_0_enc_cnt+pos_0_safe_offset;
           } else if (instruction.data == 25){
             distance = pos_25_distance;
             angle_enc_count = pos_25_enc_cnt;
-            safe_angle_enc_count = pos_0_enc_cnt+100;
+            safe_angle_enc_count = pos_25_enc_cnt+pos_25_safe_offset;
           } else if (instruction.data == 45){
             distance = pos_45_distance;
             angle_enc_count = pos_45_enc_cnt;
-            safe_angle_enc_count = pos_0_enc_cnt+100;
+            safe_angle_enc_count = pos_45_enc_cnt+pos_45_safe_offset;
           } else {
             instruction = (packet){estop, -1, 0};
             break;
           }
 
-          instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count, 0});
-          instruction_stack.push((packet){wait_for_confirmation, -1, 0});
+          instruction_stack.push((packet){follow_line_to_distance_reading, distance + 5, 0});
+          instruction_stack.push((packet){pos_four_bar, angle_enc_count + pos_45_safe_offset*0.37, 0});
           instruction_stack.push((packet){release, -1, 0});
+          instruction_stack.push((packet){wait_for_confirmation, -1, 0});
           instruction_stack.push((packet){pos_four_bar, angle_enc_count, 0});
           instruction_stack.push((packet){follow_line_to_distance_reading, distance, 0});
           instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count, 0});
+          instruction_stack.push((packet){grab, -1, 0});
           
           instruction = (packet){next_state, -1, 0};
         }
@@ -490,12 +512,16 @@ void loop(){
         break;
 
       case handle_ir_remote:
-        // instruction = (packet){next_state, -1, 0};
-        if (instruction.data != ENTER_SAVE){
+        if (instruction.data == NUM_5) {
           instruction = (packet){estop, -1, 0};
         } else {
           instruction = (packet){next_state, -1, 0};
         }
+        // if (instruction.data != ENTER_SAVE){
+        //   instruction = (packet){estop, -1, 0};
+        // } else {
+        //   instruction = (packet){next_state, -1, 0};
+        // }
         break;
     }
 
