@@ -118,12 +118,6 @@ bool follow_line_to_intersection_nb(int base_effort, float p){
 
   if (!at_intersection()){
     steering_factor = get_line_following_steering_factor(p);
-    // Serial.print("steering factor: ");
-    // Serial.println(steering_factor);
-    // Serial.print("left steering effort: ");
-    // Serial.println(get_left_steering_effort(base_effort, steering_factor));
-    // Serial.print("right steering effort: ");
-    // Serial.println(get_right_steering_effort(base_effort, steering_factor));
     chassis.setMotorEfforts(get_left_steering_effort(base_effort, steering_factor),
       get_right_steering_effort(base_effort, steering_factor));
     return (false);

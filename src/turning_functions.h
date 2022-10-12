@@ -43,26 +43,6 @@ bool turn_rad_nb(int base_effort, float p, float angle_rad, float tolerance, boo
   l_effort = constrain(l_effort, -base_effort, base_effort);
   r_effort = constrain(r_effort, -base_effort, base_effort);
 
-  // Serial.println();
-  // Serial.print("target_pos ");
-  // Serial.println(target_pos);
-  // Serial.print("l_pos ");
-  // Serial.println(l_pos);
-  // Serial.print("r_pos ");
-  // Serial.println(r_pos);
-  // Serial.print("l_delta ");
-  // Serial.println(l_delta);
-  // Serial.print("r_delta ");
-  // Serial.println(r_delta);
-  // Serial.print("l_effort ");
-  // Serial.println(l_effort);
-  // Serial.print("r_effort ");
-  // Serial.println(r_effort);
-  // Serial.print("avg_delta ");
-  // Serial.println(avg_delta);
-  // Serial.println();
-  // delay(20);
-
   if (avg_delta <= tolerance){
     chassis.setMotorEfforts(0,0);
     return true;

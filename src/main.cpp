@@ -215,7 +215,7 @@ void loop(){
   // instruction_stack.push((packet){initilize, -1, 0});
   // instruction_stack.push((packet){release_pos, 0, 0});
   // instruction_stack.push((packet){orient_to_intersection, 0, 0});
-  instruction_stack.push((packet){grab_pos, 25, 0});
+  instruction_stack.push((packet){release_pos, 25, 0});
   instruction_stack.push((packet){wait_for_confirmation, -1, 0});
   
   packet instruction = (packet){next_state, -1, 0};
@@ -385,19 +385,13 @@ void loop(){
             servo_state = servo_goto_nb(Servo32U4Base::grabber_closed_pos, false);
           }
 
-          if (servo_state == Servo32U4Base::grabber_move_state::success){
-            Serial.println();
-            Serial.println(" - success");
+          if (servo_state == Servo32U4Base::grabber_move_state::success){=
             instruction = (packet){next_state, -1, 0};
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // just try again
-            Serial.println();
-            Serial.println(" - failure");
             instruction_stack.push((packet){grab, -1, 0});
             instruction_stack.push((packet){release, -1, 0});
             instruction = (packet){next_state, -1, 0};
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
-            Serial.println();
-            Serial.println(" - in_progress");
             instruction_stack.push((packet){grab, -1, counter});
             instruction_stack.push((packet){wait, 20, 0});
             instruction = (packet){next_state, -1, 0};
@@ -416,19 +410,13 @@ void loop(){
           }
 
           if (servo_state == Servo32U4Base::grabber_move_state::success){
-            Serial.println();
-            Serial.println(" - success");
             instruction = (packet){next_state, -1, 0};
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // give up
-            Serial.println();
-            Serial.println(" - failure");
             
             instruction_stack.push((packet){release, -1, 0});
             instruction = (packet){next_state, -1, 0};
             // instruction = (packet){estop, -1, 0};
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
-            Serial.println();
-            Serial.println(" - in_progress");
             instruction_stack.push((packet){release, -1, counter});
             instruction_stack.push((packet){wait, 20, 0});
             instruction = (packet){next_state, -1, 0};
