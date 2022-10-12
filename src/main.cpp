@@ -11,18 +11,22 @@
 #include "grabber_functions.h"
 #include "turning_functions.h"
 
-#define LF_P 0.0002
-#define LINE_FOLLOWING_EFFORT 150
+#define LF_P 0.0006
+#define LINE_FOLLOWING_EFFORT 200
 #define DST_P 0.17
+#define DST_TOLERANCE 0.3
 #define TURN_P 0.4
 #define TURN_EFFORT 100
 #define TURN_TOLERANCE 10
 #define pos_0_enc_cnt 0
-#define pos_0_distance 5.0
-#define pos_45_enc_cnt 3892
-#define pos_45_distance 5.0
-#define pos_25_enc_cnt 8234
-#define pos_25_distance 5.0
+#define pos_0_safe_offset 100
+#define pos_0_distance 7.5
+#define pos_45_enc_cnt 4042
+#define pos_45_safe_offset 500
+#define pos_45_distance 15.0
+#define pos_25_enc_cnt 8013
+#define pos_25_safe_offset -500
+#define pos_25_distance 7.0
 
 BlueMotor motor;
 Rangefinder rangefinder(17,12);
@@ -41,15 +45,9 @@ void setup()
   motor.setup();
   servo.setMinMaxMicroseconds(500, 2500);   //1035 closed, 1900 open
   pinMode(REFL_R, INPUT);
+
   buttonB.waitForButton();
   delay(500);
-  
-  // int counter = 0;
-  // while(true){
-  //   servo.writeMicroseconds(1000);
-  //   Serial.println("alive");
-  //   Serial.println(counter++);
-  // }
 }
 
 
@@ -204,7 +202,7 @@ void loop(){
   #define debug
   StackArray<packet> instruction_stack;
   // instruction_stack.push((packet){initilize, -1, 0});
-  instruction_stack.push((packet){follow_line_to_distance_reading, 12, 0});
+  instruction_stack.push((packet){grab_pos, 45, 0});
   packet instruction = (packet){next_state, -1, 0};
 
   /// @brief used to track data between state calls.
@@ -261,6 +259,8 @@ void loop(){
         chassis.idle();
         servo_goto_nb(Servo32U4Base::grabber_open_pos, true);
 
+        motor.moveTo(0);
+
         while(true) {delay(10);}
         break;
 
@@ -313,7 +313,7 @@ void loop(){
         break;
 
       case follow_line_to_distance_reading:
-        if (follow_line_to_distance_reading_nb(LINE_FOLLOWING_EFFORT, LF_P, DST_P, 120, 0.1)){
+        if (follow_line_to_distance_reading_nb(LINE_FOLLOWING_EFFORT, LF_P, DST_P, instruction.data, DST_TOLERANCE)){
           instruction = (packet){next_state, -1, 0};
         }
         break;
@@ -369,12 +369,18 @@ void loop(){
           }
 
           if (servo_state == Servo32U4Base::grabber_move_state::success){
+            Serial.println();
+            Serial.println(" - success");
             instruction = (packet){next_state, -1, 0};
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // just try again
+            Serial.println();
+            Serial.println(" - failure");
             instruction_stack.push((packet){grab, -1, 0});
             instruction_stack.push((packet){release, -1, 0});
             instruction = (packet){next_state, -1, 0};
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
+            Serial.println();
+            Serial.println(" - in_progress");
             instruction_stack.push((packet){grab, -1, counter});
             instruction_stack.push((packet){wait, 20, 0});
             instruction = (packet){next_state, -1, 0};
@@ -393,12 +399,18 @@ void loop(){
           }
 
           if (servo_state == Servo32U4Base::grabber_move_state::success){
+            Serial.println();
+            Serial.println(" - success");
             instruction = (packet){next_state, -1, 0};
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // give up
+            Serial.println();
+            Serial.println(" - failure");
             instruction = (packet){estop, -1, 0};
           } else {  // servo_state == Servo32U4Base::grabber_move_state::in_progress
+            Serial.println();
+            Serial.println(" - in_progress");
             instruction_stack.push((packet){release, -1, counter});
-            instruction_stack.push((packet){wait, 30, 0});
+            instruction_stack.push((packet){wait, 20, 0});
             instruction = (packet){next_state, -1, 0};
           }
         }
@@ -412,15 +424,15 @@ void loop(){
           if (instruction.data == 0){
             distance = pos_0_distance;
             angle_enc_count = pos_0_enc_cnt;
-            safe_angle_enc_count = pos_0_enc_cnt+50;
+            safe_angle_enc_count = pos_0_enc_cnt+pos_0_safe_offset;
           } else if (instruction.data == 25){
             distance = pos_25_distance;
             angle_enc_count = pos_25_enc_cnt;
-            safe_angle_enc_count = pos_0_enc_cnt+100;
+            safe_angle_enc_count = pos_25_enc_cnt+pos_25_safe_offset;
           } else if (instruction.data == 45){
             distance = pos_45_distance;
             angle_enc_count = pos_45_enc_cnt;
-            safe_angle_enc_count = pos_0_enc_cnt+100;
+            safe_angle_enc_count = pos_45_enc_cnt+pos_45_safe_offset;
           } else {
             instruction = (packet){estop, -1, 0};
             break;
@@ -431,6 +443,7 @@ void loop(){
           instruction_stack.push((packet){grab, -1, 0});
           instruction_stack.push((packet){pos_four_bar, angle_enc_count, 0});
           instruction_stack.push((packet){follow_line_to_distance_reading, distance, 0});
+          instruction_stack.push((packet){release, -1, 0});
           instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count, 0});
           
           instruction = (packet){next_state, -1, 0};
@@ -477,6 +490,7 @@ void loop(){
         break;
 
       case handle_ir_remote:
+        // instruction = (packet){next_state, -1, 0};
         if (instruction.data != ENTER_SAVE){
           instruction = (packet){estop, -1, 0};
         } else {

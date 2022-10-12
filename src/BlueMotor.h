@@ -24,5 +24,5 @@ private:
     const int AIN1 = 13;
     // const int ENCA = 0;
     // const int ENCB = 1;
-    const float P = 2;
+    const float P = 10;
 };

@@ -120,11 +120,8 @@ void BlueMotor::moveTo(long target)  //Move to this encoder position within the 
 
 bool BlueMotor::moveToNB(long target) {
   long delta = target - this->getPosition();
-  Serial.println();
-  Serial.println(delta);
-  Serial.println();
   if(abs(delta) > this->tolerance){
-    this->setEffort(delta * this->P);
+    this->setEffort(constrain(delta * this->P, -400, 400));
     return false;
   } else {
     this->setEffort(0);

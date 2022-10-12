@@ -56,7 +56,7 @@ public:
     int microsec_to_pos(int pos);
 
     int Servo_sense = A0;
-    static const int grabber_open_pos = 1900;
+    static const int grabber_open_pos = 2200;
     static const int grabber_closed_pos = 1035;
     static const int grabber_pos_tolerance = 10;
 
