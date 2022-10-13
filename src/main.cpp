@@ -12,7 +12,7 @@
 #include "turning_functions.h"
 
 
-#define debug
+// #define debug
 // #define verbose_debug
 
 #define LF_P 0.0004
