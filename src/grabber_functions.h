@@ -20,7 +20,7 @@ Servo32U4Base::grabber_move_state servo_goto_nb(int pos, bool reset){  // TODO: 
   if(abs(curr_pos - prev_pos)>stall_tolerance && abs(curr_pos - tar_pos)>position_tolerance){  // servo still moving
     prev_pos = curr_pos;
     return (Servo32U4Base::grabber_move_state::in_progress);
-  } else if (abs(curr_pos - prev_pos)<stall_tolerance){  // failure, servo not moving
+  } else if (abs(curr_pos - prev_pos)<stall_tolerance && abs(curr_pos - tar_pos)>position_tolerance){  // failure, servo not moving
     return (Servo32U4Base::grabber_move_state::failure);
   }else { //if (abs(curr_pos - tar_pos)<10) move done
     return (Servo32U4Base::grabber_move_state::success);
