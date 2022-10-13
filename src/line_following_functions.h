@@ -118,8 +118,8 @@ bool follow_line_to_intersection_nb(int base_effort, float p){
 
   if (!at_intersection()){
     steering_factor = get_line_following_steering_factor(p);
-    chassis.setMotorEfforts(get_left_steering_effort(base_effort, steering_factor),
-      get_right_steering_effort(base_effort, steering_factor));
+    chassis.setMotorEfforts(get_left_steering_effort(base_effort, steering_factor)*1.03,
+      get_right_steering_effort(base_effort, steering_factor)*0.97);
     return (false);
   }
   return (true);

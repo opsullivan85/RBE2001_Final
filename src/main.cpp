@@ -15,16 +15,16 @@
 #define debug
 // #define verbose_debug
 
-#define LF_P 0.00055
-#define LINE_FOLLOWING_EFFORT 265
+#define LF_P 0.0004
+#define LINE_FOLLOWING_EFFORT 200
 #define DST_P 0.35
 #define DST_TOLERANCE 0.4
-#define TURN_P 0.3
-#define TURN_EFFORT 70
+#define TURN_P 0.25
+#define TURN_EFFORT 60
 #define TURN_TOLERANCE 10
 #define pos_0_enc_cnt 0
 #define pos_0_safe_offset 500
-#define pos_0_distance 9
+#define pos_0_distance 8
 #define pos_45_enc_cnt 4042
 #define pos_45_safe_offset 500
 #define pos_45_distance 13.5
@@ -132,6 +132,10 @@ enum states {
   ///        temporarily interrupts instructions, resets counter.
   /// @param data unused
   handle_ir_remote,  
+
+  /// @brief crosses the field
+  /// @param data direction to cross in (0 left, 1 right)
+  cross_field,  
 };
 
 struct packet {
@@ -212,10 +216,7 @@ void print_instruction_stack(StackArray<packet> &instruction_stack){
 
 void loop(){
   StackArray<packet> instruction_stack;
-  // instruction_stack.push((packet){initilize, -1, 0});
-  // instruction_stack.push((packet){release_pos, 0, 0});
-  // instruction_stack.push((packet){orient_to_intersection, 0, 0});
-  instruction_stack.push((packet){release_pos, 25, 0});
+  instruction_stack.push((packet){initilize, -1, 0});
   instruction_stack.push((packet){wait_for_confirmation, -1, 0});
   
   packet instruction = (packet){next_state, -1, 0};
@@ -235,29 +236,27 @@ void loop(){
     switch (instruction.state) {
       case initilize:
         // this is a stack so instructions should be read bottom up
-        instruction_stack.push((packet){release_pos, 25, 0});  // replace plate for 25 pos
-        instruction_stack.push((packet){orient_to_intersection, 0, 0}); // orient for 25 pos
+        
+        instruction_stack.push((packet){release_pos, 45, 0});
+        instruction_stack.push((packet){orient_to_intersection, 1, 0});
+        instruction_stack.push((packet){grab_pos, 0, 0});
+        instruction_stack.push((packet){wait_for_confirmation, -1, 0});
+        instruction_stack.push((packet){release_pos, 0, 0});
+        instruction_stack.push((packet){orient_to_intersection, 0, 0});
+        instruction_stack.push((packet){grab_pos, 45, 0});
 
-        instruction_stack.push((packet){grab_pos, 0, 0});  // grab new plate from 0 deg pos
-        instruction_stack.push((packet){release_pos, 0, 0});  // release old plate at 0 deg pos
+        instruction_stack.push((packet){turn_to_next_line, 1, 0});
+        instruction_stack.push((packet){follow_line_to_over_intersection, 0, 0});
+        instruction_stack.push((packet){cross_field, 1, 0});
+        instruction_stack.push((packet){orient_to_intersection, 1, 0});
 
-        instruction_stack.push((packet){orient_to_intersection, 0, 0});  // orient for 0 pos
-        instruction_stack.push((packet){grab_pos, 25, 0});  // grab from 45 deg pos
-        instruction_stack.push((packet){orient_to_intersection, 1, 0});  // orient for 45 pos
-
-        instruction_stack.push((packet){follow_line_to_over_intersection, -1, 0});  // cross field
-        instruction_stack.push((packet){turn_rad, 270, 0});  // turn to face other side of field
-        instruction_stack.push((packet){follow_line_to_distance_reading, 10, 0});  // go to position for crossing
-        instruction_stack.push((packet){orient_to_intersection, 1, 0});  // orient for 0 pos
-
-        instruction_stack.push((packet){release_pos, 45, 0});  // replace plate for 45 pos
-        instruction_stack.push((packet){orient_to_intersection, 0, 0}); // orient for 45 pos
-
-        instruction_stack.push((packet){grab_pos, 0, 0});  // grab new plate from 0 deg pos
-        instruction_stack.push((packet){release_pos, 0, 0});  // release old plate at 0 deg pos
-
-        instruction_stack.push((packet){orient_to_intersection, 1, 0});  // orient for 0 pos
-        instruction_stack.push((packet){grab_pos, 45, 0});  // grab from 4F5 deg pos
+        instruction_stack.push((packet){release_pos, 25, 0});
+        instruction_stack.push((packet){orient_to_intersection, 0, 0});
+        instruction_stack.push((packet){grab_pos, 0, 0});
+        instruction_stack.push((packet){wait_for_confirmation, -1, 0});
+        instruction_stack.push((packet){release_pos, 0, 0});
+        instruction_stack.push((packet){orient_to_intersection, 1, 0});
+        instruction_stack.push((packet){grab_pos, 25, 0});
 
         instruction = (packet){next_state, -1, 0};
         break;
@@ -385,7 +384,7 @@ void loop(){
             servo_state = servo_goto_nb(Servo32U4Base::grabber_closed_pos, false);
           }
 
-          if (servo_state == Servo32U4Base::grabber_move_state::success){=
+          if (servo_state == Servo32U4Base::grabber_move_state::success){
             instruction = (packet){next_state, -1, 0};
           } else if (servo_state == Servo32U4Base::grabber_move_state::failure){  // just try again
             instruction_stack.push((packet){grab, -1, 0});
@@ -450,9 +449,18 @@ void loop(){
           instruction_stack.push((packet){pos_four_bar, safe_angle_enc_count, 0});
           instruction_stack.push((packet){grab, -1, 0});
           instruction_stack.push((packet){wait_for_confirmation, -1, 0});
+          if (instruction.data == 0){
+            instruction_stack.push((packet){pos_four_bar, angle_enc_count, 0});
+          }
           instruction_stack.push((packet){follow_line_to_distance_reading, distance, 0});
           instruction_stack.push((packet){release, -1, 0});
-          instruction_stack.push((packet){pos_four_bar, angle_enc_count, 0});
+          if (instruction.data == 0){
+            instruction_stack.push((packet){pos_four_bar, angle_enc_count+safe_angle_enc_count*0.75, 0});
+          } else {
+            instruction_stack.push((packet){pos_four_bar, angle_enc_count, 0});
+          }
+
+          
           
           instruction = (packet){next_state, -1, 0};
         }
@@ -505,12 +513,23 @@ void loop(){
         } else {
           instruction = (packet){next_state, -1, 0};
         }
-        // if (instruction.data != ENTER_SAVE){
-        //   instruction = (packet){estop, -1, 0};
-        // } else {
-        //   instruction = (packet){next_state, -1, 0};
-        // }
         break;
+
+      case cross_field:
+        instruction_stack.push((packet){turn_to_line, instruction.data, 0});
+        instruction_stack.push((packet){follow_line_to_over_intersection, -1, 0});
+        
+        if (instruction.data == 0){  // left
+          instruction_stack.push((packet){turn_rad, -PI/2*0.95, 0});
+        } else { // right
+          instruction_stack.push((packet){turn_rad, PI/2*0.95, 0});
+        }
+
+        instruction_stack.push((packet){follow_line_to_distance_reading, 3.0, 0});
+        instruction_stack.push((packet){pos_four_bar, pos_45_enc_cnt, 0});
+        
+        instruction = (packet){next_state, -1, 0};
+      break;
     }
 
     // handle un-caught ir codes
